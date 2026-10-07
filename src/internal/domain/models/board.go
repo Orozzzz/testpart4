@@ -1,19 +1,28 @@
 package models
 
-type Board [3][3]int
+type Cell int
+
+const (
+	Empty Cell = iota
+	PlayerCell
+	ComputerCell
+)
+
+
+type Board [3][3]Cell
 
 func NewBoard() Board {
 	return Board{}
 }
 
 func (b Board) IsEmpty(row, col int) bool {
-	return b[row][col] == 0
+	return b[row][col] == Empty
 }
 
 func (b Board) IsFull() bool {
 	for i := 0; i < 3; i++ {
 		for j := 0; j < 3; j++ {
-			if b[i][j] == 0 {
+			if b[i][j] == Empty {
 				return false
 			}
 		}
@@ -21,10 +30,10 @@ func (b Board) IsFull() bool {
 	return true
 }
 
-func (b *Board) MakeMove(row, col int, player int) bool {
-	if b[row][col] != 0 {
+func (b *Board) MakeMove(row, col int, cell Cell) bool {
+	if b[row][col] != Empty {
 		return false
 	}
-	b[row][col] = player
+	b[row][col] = cell
 	return true
 }

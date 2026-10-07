@@ -59,7 +59,7 @@ func (s *gameService) ValidateBoard(currentGame models.Game, newBoard models.Boa
 	return nil
 }
 
-func (s *gameService) CheckGameOver(board models.Board) (bool, int, string) {
+func (s *gameService) CheckGameOver(board models.Board) (bool, models.Cell, string) {
 	game := models.Game{Board: board}
 	return game.IsGameOver()
 }

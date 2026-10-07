@@ -21,6 +21,8 @@ func NewGameHandler(service service.GameService) *GameHandler {
 	}
 }
 
+// newBoard := mappers.ToDomainBoard(req.Board)
+
 func (h *GameHandler) CreateGame(w http.ResponseWriter, r *http.Request) {
 	game := h.service.NewGame()
 	response := mappers.ToNewGameResponse(game)
@@ -57,14 +59,16 @@ func (h *GameHandler) MakeMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.ValidateBoard(currentGame, req.Board); err != nil {
+	newBoard := mappers.ToDomainBoard(req.Board)
+
+	if err := h.service.ValidateBoard(currentGame, newBoard); err != nil {
 		sendError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	gameAfterPlayerMove := models.Game{
 		ID:    currentGame.ID,
-		Board: req.Board,
+		Board: newBoard,
 		Turn:  2,
 	}
 
