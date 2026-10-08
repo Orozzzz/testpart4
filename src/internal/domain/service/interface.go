@@ -1,12 +1,16 @@
 package service
 
-import "project03/internal/domain/models"
+import (
+	"context"
+
+	"github.com/google/uuid"
+
+	"project03/internal/domain/models"
+)
 
 type GameService interface {
-    GetNextMove(game models.Game) (models.Board, error)
-    ValidateBoard(currentGame models.Game, newBoard models.Board) error
-    CheckGameOver(board models.Board) (bool, models.Cell, string)
-    NewGame() models.Game
-    SaveGame(game models.Game) error
-    GetGame(id string) (models.Game, error)
+	CreateGame(ctx context.Context, mode models.GameMode, playerID uuid.UUID) (models.Game, error)
+	GetGame(ctx context.Context, id string) (models.Game, error)
+	JoinGame(ctx context.Context, gameID string, playerID uuid.UUID, cell models.Cell) error
+	MakeMove(ctx context.Context, gameID string, playerID uuid.UUID, row, col int) error
 }

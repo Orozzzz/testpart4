@@ -1,20 +1,64 @@
 package models
 
-import "github.com/google/uuid"
+import (
+	"errors"
+
+	"github.com/google/uuid"
+)
+
+type GameStatus int
+
+const (
+	GameWaiting GameStatus = iota
+	GameInProgress
+	GameDraw
+	GameWon
+)
+
+type Player struct {
+	ID   uuid.UUID
+	Cell Cell
+}
+
+type GameMode int
+
+const (
+	GameWithPlayer GameMode = iota
+	GameWithComputer
+)
 
 type Game struct {
-	ID    string
-	Board Board
-	Turn  int
+	ID            string
+	Board         Board
+	Players       []Player
+	CurrentPlayer uuid.UUID
+	Status        GameStatus
+	Winner        uuid.UUID
+	Mode          GameMode
 }
 
 func NewGame() Game {
 	return Game{
-		ID:    uuid.New().String(),
-		Board: NewBoard(),
-		Turn:  1,
+		ID:      uuid.New().String(),
+		Board:   NewBoard(),
+		Players: []Player{},
+		Status:  GameWaiting,
+		Winner:  uuid.Nil,
+		Mode:    GameWithPlayer,
 	}
 }
+
+var (
+	ErrGameFinished        = errors.New("game is already finished")
+	ErrGameNotStarted      = errors.New("game has not started")
+	ErrPlayerNotFound      = errors.New("player is not in game")
+	ErrNotPlayerTurn       = errors.New("not player's turn")
+	ErrInvalidPosition     = errors.New("invalid board position")
+	ErrCellOccupied        = errors.New("cell is already occupied")
+	ErrPlayerAlreadyJoined = errors.New("player already joined the game")
+	ErrGameFull            = errors.New("game already has two players")
+	ErrInvalidPlayerCell   = errors.New("invalid player cell")
+)
 
 func (g Game) CheckWinner() (Cell, bool) {
 	board := g.Board
@@ -49,20 +93,97 @@ func (g Game) CheckWinner() (Cell, bool) {
 	return Empty, false
 }
 
-func (g Game) IsGameOver() (bool, Cell, string) {
-	if winner, ok := g.CheckWinner(); ok {
-		result := "draw"
+func (g *Game) MakeMove(playerID uuid.UUID, row, col int) error {
+	if g.Status == GameWon || g.Status == GameDraw {
+		return ErrGameFinished
+	}
 
-		if winner == PlayerCell {
-			result = "player"
-		} else {
-			result = "computer"
+	if g.Status != GameInProgress {
+		return ErrGameNotStarted
+	}
+
+	if row < 0 || row >= 3 || col < 0 || col >= 3 {
+		return ErrInvalidPosition
+	}
+
+	var player *Player
+
+	for i := range g.Players {
+		if g.Players[i].ID == playerID {
+			player = &g.Players[i]
+			break
 		}
-		return true, winner, result
+	}
+
+	if player == nil {
+		return ErrPlayerNotFound
+	}
+
+	if g.CurrentPlayer != playerID {
+		return ErrNotPlayerTurn
+	}
+
+	if !g.Board.MakeMove(row, col, player.Cell) {
+		return ErrCellOccupied
+	}
+
+	if _, ok := g.CheckWinner(); ok {
+		g.Status = GameWon
+		g.Winner = playerID
+		return nil
 	}
 
 	if g.Board.IsFull() {
-		return true, Empty, "draw"
+		g.Status = GameDraw
+		g.Winner = uuid.Nil
+		return nil
 	}
-	return false, Empty, ""
+
+	for _, p := range g.Players {
+		if p.ID != playerID {
+			g.CurrentPlayer = p.ID
+			break
+		}
+	}
+
+	return nil
+}
+
+func (g *Game) JoinPlayer(playerID uuid.UUID, cell Cell) error {
+	if len(g.Players) >= 2 {
+		return ErrGameFull
+	}
+
+	if g.Status != GameWaiting {
+		return ErrGameNotStarted
+	}
+
+	if cell != X && cell != O {
+		return ErrInvalidPlayerCell
+	}
+
+	for _, player := range g.Players {
+		if player.ID == playerID {
+			return ErrPlayerAlreadyJoined
+		}
+
+		if player.Cell == cell {
+			return ErrInvalidPlayerCell
+		}
+	}
+
+	g.Players = append(g.Players, Player{
+		ID:   playerID,
+		Cell: cell,
+	})
+
+	if len(g.Players) == 1 {
+		g.CurrentPlayer = playerID
+	}
+
+	if len(g.Players) == 2 {
+		g.Status = GameInProgress
+	}
+
+	return nil
 }

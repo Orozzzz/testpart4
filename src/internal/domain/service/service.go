@@ -1,137 +1,140 @@
 package service
 
 import (
+	"context"
 	"errors"
 
-	"project03/internal/datasource/repository"
+	"github.com/google/uuid"
+
 	"project03/internal/domain/models"
+	"project03/internal/domain/ports"
+	"project03/internal/domain/strategy"
 )
 
 type gameService struct {
-	repo repository.GameRepository
+	repo     ports.GameRepository
+	strategy strategy.MoveStrategy
 }
 
-func NewService(repo repository.GameRepository) GameService {
+func NewService(
+	repo ports.GameRepository,
+	strategy strategy.MoveStrategy,
+) GameService {
 	return &gameService{
-		repo: repo,
+		repo:     repo,
+		strategy: strategy,
 	}
 }
 
-func (s *gameService) NewGame() models.Game {
+func (s *gameService) CreateGame(
+	ctx context.Context,
+	mode models.GameMode,
+	playerID uuid.UUID,
+) (models.Game, error) {
 	game := models.NewGame()
-	s.repo.Save(game)
-	return game
+	game.Mode = mode
+
+	switch mode {
+	case models.GameWithPlayer:
+		if err := game.JoinPlayer(playerID, models.X); err != nil {
+			return models.Game{}, err
+		}
+
+	case models.GameWithComputer:
+		if err := game.JoinPlayer(playerID, models.X); err != nil {
+			return models.Game{}, err
+		}
+
+		computerID := uuid.New()
+
+		if err := game.JoinPlayer(computerID, models.O); err != nil {
+			return models.Game{}, err
+		}
+		if game.Status != models.GameInProgress {
+			return models.Game{}, errors.New("computer game did not start")
+		}
+
+	default:
+		return models.Game{}, errors.New("invalid game mode")
+	}
+
+	if err := s.repo.Save(ctx, game); err != nil {
+		return models.Game{}, err
+	}
+
+	return game, nil
+}
+func (s *gameService) GetGame(ctx context.Context, id string) (models.Game, error) {
+	return s.repo.Get(ctx, id)
 }
 
-func (s *gameService) SaveGame(game models.Game) error {
-	return s.repo.Save(game)
+func (s *gameService) JoinGame(
+	ctx context.Context,
+	gameID string,
+	playerID uuid.UUID,
+	cell models.Cell,
+) error {
+	game, err := s.repo.Get(ctx, gameID)
+	if err != nil {
+		return err
+	}
+
+	if err := game.JoinPlayer(playerID, cell); err != nil {
+		return err
+	}
+
+	return s.repo.Save(ctx, game)
 }
 
-func (s *gameService) GetGame(id string) (models.Game, error) {
-	return s.repo.Get(id)
-}
+func (s *gameService) MakeMove(
+	ctx context.Context,
+	gameID string,
+	playerID uuid.UUID,
+	row, col int,
+) error {
+	game, err := s.repo.Get(ctx, gameID)
+	if err != nil {
+		return err
+	}
 
-func (s *gameService) ValidateBoard(currentGame models.Game, newBoard models.Board) error {
-	changes := 0
-	var changedRow, changedCol int
+	// Ход пользователя.
+	if err := game.MakeMove(playerID, row, col); err != nil {
+		return err
+	}
 
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			if currentGame.Board[i][j] != newBoard[i][j] {
-				changes++
-				changedRow, changedCol = i, j
+	// Ответ компьютера.
+	if game.Mode == models.GameWithComputer &&
+		game.Status == models.GameInProgress {
+
+		var computer *models.Player
+
+		for i := range game.Players {
+			if game.Players[i].ID != playerID {
+				computer = &game.Players[i]
+				break
 			}
 		}
-	}
 
-	if changes == 0 {
-		return errors.New("no moves made")
-	}
-	if changes > 1 {
-		return errors.New("invalid move: more than one cell changed")
-	}
-	if currentGame.Board[changedRow][changedCol] != 0 {
-		return errors.New("cell already occupied")
-	}
-	if newBoard[changedRow][changedCol] != 1 {
-		return errors.New("invalid player symbol")
-	}
-	return nil
-}
-
-func (s *gameService) CheckGameOver(board models.Board) (bool, models.Cell, string) {
-	game := models.Game{Board: board}
-	return game.IsGameOver()
-}
-
-func (s *gameService) GetNextMove(game models.Game) (models.Board, error) {
-	if finished, _, _ := game.IsGameOver(); finished {
-		return game.Board, errors.New("game is already over")
-	}
-
-	newBoard := game.Board
-	bestScore := -1000
-	bestMove := -1
-
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			if newBoard[i][j] == 0 {
-				newBoard[i][j] = 2
-				score := s.minimax(newBoard, 0, false)
-				newBoard[i][j] = 0
-				if score > bestScore {
-					bestScore = score
-					bestMove = i*3 + j
-				}
-			}
+		if computer == nil {
+			return errors.New("computer player not found")
 		}
-	}
-	if bestMove != -1 {
-		row := bestMove / 3
-		col := bestMove % 3
-		newBoard[row][col] = 2
-	}
 
-	return newBoard, nil
-}
+		computerRow, computerCol, err := s.strategy.NextMove(
+			game.Board,
+			computer.Cell,
+		)
+		if err != nil {
+			return err
+		}
 
-func (s *gameService) minimax(board models.Board, depth int, isMaximizing bool) int {
-	game := models.Game{Board: board}
-	if finished, winner, _ := game.IsGameOver(); finished {
-		if winner == 2 {
-			return 10 - depth
-		} else if winner == 1 {
-			return -10 + depth
-		} else {
-			return 0
+		if err := game.MakeMove(
+			computer.ID,
+			computerRow,
+			computerCol,
+		); err != nil {
+			return err
 		}
 	}
 
-	if isMaximizing {
-		bestScore := -1000
-		for i := 0; i < 3; i++ {
-			for j := 0; j < 3; j++ {
-				if board[i][j] == 0 {
-					board[i][j] = 2
-					score := s.minimax(board, depth+1, false)
-					board[i][j] = 0
-					bestScore = max(bestScore, score)
-				}
-			}
-		}
-		return bestScore
-	} else {
-		bestScore := 1000
-		for i := 0; i < 3; i++ {
-			for j := 0; j < 3; j++ {
-				if board[i][j] == 0 {
-					board[i][j] = 1
-					score := s.minimax(board, depth+1, true)
-					board[i][j] = 0
-					bestScore = min(bestScore, score)
-				}
-			}
-		}
-		return bestScore
-	}
+	return s.repo.Save(ctx, game)
 }

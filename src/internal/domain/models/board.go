@@ -4,10 +4,9 @@ type Cell int
 
 const (
 	Empty Cell = iota
-	PlayerCell
-	ComputerCell
+	X
+	O
 )
-
 
 type Board [3][3]Cell
 

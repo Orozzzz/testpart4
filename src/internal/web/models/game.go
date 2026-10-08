@@ -1,8 +1,8 @@
 package models
 
 type GameRequest struct {
-	ID    string    `json:"id"`
-	Board [3][3]int `json:"board"`
+	Row int `json:"row"`
+	Col int `json:"col"`
 }
 
 type GameResponse struct {

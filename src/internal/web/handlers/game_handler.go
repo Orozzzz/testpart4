@@ -3,7 +3,8 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
+
+	"github.com/google/uuid"
 
 	"project03/internal/domain/models"
 	"project03/internal/domain/service"
@@ -16,26 +17,53 @@ type GameHandler struct {
 }
 
 func NewGameHandler(service service.GameService) *GameHandler {
-	return &GameHandler{
-		service: service,
-	}
+	return &GameHandler{service: service}
 }
 
-// newBoard := mappers.ToDomainBoard(req.Board)
-
 func (h *GameHandler) CreateGame(w http.ResponseWriter, r *http.Request) {
-	game := h.service.NewGame()
+
+	playerID, err := uuid.Parse(r.Header.Get("X-User-ID"))
+	if err != nil {
+		sendError(w, "invalid or missing user id", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Mode string `json:"mode"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	var mode models.GameMode
+
+	switch req.Mode {
+	case "player":
+		mode = models.GameWithPlayer
+	case "computer":
+		mode = models.GameWithComputer
+	default:
+		sendError(w, "invalid game mode", http.StatusBadRequest)
+		return
+	}
+
+	game, err := h.service.CreateGame(
+		r.Context(),
+		mode,
+		playerID,
+	)
+	if err != nil {
+		sendError(w, "failed to create game", http.StatusInternalServerError)
+		return
+	}
+
 	response := mappers.ToNewGameResponse(game)
 	sendJSON(w, response, http.StatusCreated)
 }
-
 func (h *GameHandler) MakeMove(w http.ResponseWriter, r *http.Request) {
-	pathParts := strings.Split(r.URL.Path, "/")
-	if len(pathParts) < 3 {
-		sendError(w, "invalid URL", http.StatusBadRequest)
-		return
-	}
-	gameID := pathParts[2]
+	gameID := r.PathValue("id")
 
 	var req webmodels.GameRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -43,83 +71,43 @@ func (h *GameHandler) MakeMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.ID != gameID {
-		sendError(w, "game ID mismatch", http.StatusBadRequest)
-		return
-	}
-
-	currentGame, err := h.service.GetGame(gameID)
+	// Временно используем UUID из заголовка.
+	// Позже его будет устанавливать UserAuthenticator
+	// после успешной авторизации.
+	playerID, err := uuid.Parse(r.Header.Get("X-User-ID"))
 	if err != nil {
-		sendError(w, "game not found", http.StatusNotFound)
+		sendError(w, "invalid or missing user id", http.StatusUnauthorized)
 		return
 	}
 
-	if finished, _, _ := currentGame.IsGameOver(); finished {
-		sendError(w, "game is already over", http.StatusConflict)
-		return
-	}
-
-	newBoard := mappers.ToDomainBoard(req.Board)
-
-	if err := h.service.ValidateBoard(currentGame, newBoard); err != nil {
+	err = h.service.MakeMove(
+		r.Context(),
+		gameID,
+		playerID,
+		req.Row,
+		req.Col,
+	)
+	if err != nil {
 		sendError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	gameAfterPlayerMove := models.Game{
-		ID:    currentGame.ID,
-		Board: newBoard,
-		Turn:  2,
-	}
-
-	if finished, _, result := gameAfterPlayerMove.IsGameOver(); finished {
-		h.service.SaveGame(gameAfterPlayerMove)
-		response := mappers.ToWebResponse(gameAfterPlayerMove, result)
-		sendJSON(w, response, http.StatusOK)
-		return
-	}
-
-	computerBoard, err := h.service.GetNextMove(gameAfterPlayerMove)
+	game, err := h.service.GetGame(r.Context(), gameID)
 	if err != nil {
-		sendError(w, err.Error(), http.StatusInternalServerError)
+		sendError(w, "failed to get game", http.StatusInternalServerError)
 		return
 	}
 
-	gameAfterComputer := models.Game{
-		ID:    currentGame.ID,
-		Board: computerBoard,
-		Turn:  1,
-	}
-
-	_, _, result := gameAfterComputer.IsGameOver()
-
-	if err := h.service.SaveGame(gameAfterComputer); err != nil {
-		sendError(w, "failed to save game", http.StatusInternalServerError)
-		return
-	}
-
-	response := mappers.ToWebResponse(gameAfterComputer, result)
+	response := mappers.ToWebResponse(game, "")
 	sendJSON(w, response, http.StatusOK)
 }
 
 func (h *GameHandler) GetGame(w http.ResponseWriter, r *http.Request) {
-	pathParts := strings.Split(r.URL.Path, "/")
-	if len(pathParts) < 3 {
-		sendError(w, "invalid URL", http.StatusBadRequest)
-		return
-	}
-	gameID := pathParts[2]
+	gameID := r.PathValue("id")
 
-	game, err := h.service.GetGame(gameID)
+	game, err := h.service.GetGame(r.Context(), gameID)
 	if err != nil {
 		sendError(w, "game not found", http.StatusNotFound)
-		return
-	}
-
-	finished, _, result := game.IsGameOver()
-	if finished {
-		response := mappers.ToWebResponse(game, result)
-		sendJSON(w, response, http.StatusOK)
 		return
 	}
 
@@ -130,11 +118,14 @@ func (h *GameHandler) GetGame(w http.ResponseWriter, r *http.Request) {
 func sendJSON(w http.ResponseWriter, data interface{}, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		return
+	}
 }
 
 func sendError(w http.ResponseWriter, message string, status int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
+	sendJSON(w, map[string]string{
+		"error": message,
+	}, status)
 }
