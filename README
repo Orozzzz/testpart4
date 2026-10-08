@@ -1,0 +1,175 @@
+## планы по таску T4 то есть в каком порядке я планирую делать задачи 
+
+* примерно в таком духо но во время работы могут быть небольшие изменение 
+
+T4
+│
+├── 1. PostgreSQL + pgx
+│   ├── pgxpool
+│   ├── GameRepository
+│   └── убрать sync.Map
+│
+├── 2. Users
+│   ├── User domain model
+│   ├── UserRepository
+│   ├── UserService
+│   └── PostgreSQL
+│
+├── 3. Registration
+│   └── SignUpRequest
+│
+├── 4. Authentication
+│   ├── Basic Auth
+│   ├── base64(login:password)
+│   └── password hashing
+│
+├── 5. UserAuthenticator
+│   └── middleware
+│
+├── 6. Game API
+│   ├── create player/computer
+│   ├── available games
+│   ├── join
+│   ├── move
+│   └── get game
+│
+└── 7. User API
+    └── get user by UUID
+
+
+
+# и вот такая должна получиться архтектура проекта! 
+
+📁 src/
+│
+├── 📁 cmd/
+│   └── 📄 main.go
+│       # Точка входа приложения
+│
+├── 📁 internal/
+│   │
+│   ├── 📁 domain/                         # 🧠 БИЗНЕС-ЛОГИКА
+│   │   │
+│   │   ├── 📁 models/
+│   │   │   ├── 📄 board.go
+│   │   │   │   # Игровое поле, Cell, X, O, Empty
+│   │   │   │
+│   │   │   ├── 📄 game.go
+│   │   │   │   # Game, Player, GameStatus, GameMode
+│   │   │   │   # Правила игры и переходы состояний
+│   │   │   │
+│   │   │   └── 📄 user.go
+│   │   │       # User, UUID, Login и т.д.
+│   │   │
+│   │   ├── 📁 ports/
+│   │   │   ├── 📄 game_repository.go
+│   │   │   │   # Интерфейс хранения игр
+│   │   │   │
+│   │   │   └── 📄 user_repository.go
+│   │   │       # Интерфейс хранения пользователей
+│   │   │
+│   │   └── 📁 strategy/
+│   │       ├── 📄 interface.go
+│   │       │   # MoveStrategy
+│   │       │
+│   │       └── 📄 minimax.go
+│   │           # AI против компьютера
+│   │
+│   │
+│   ├── 📁 application/                    # ⚙️ USE CASES / СЕРВИСЫ
+│   │   │
+│   │   ├── 📁 game/
+│   │   │   ├── 📄 interface.go
+│   │   │   │   # GameService interface
+│   │   │   │
+│   │   │   └── 📄 service.go
+│   │   │       # Создание игры
+│   │   │       # Join
+│   │   │       # Move
+│   │   │       # Get game
+│   │   │       # Available games
+│   │   │       # PvP / PvC
+│   │   │
+│   │   └── 📁 auth/
+│   │       ├── 📄 interface.go
+│   │       │   # AuthService
+│   │       │
+│   │       └── 📄 service.go
+│   │           # Registration
+│   │           # Authentication
+│   │           # Password verification
+│   │
+│   │
+│   ├── 📁 datasource/                     # 🗄️ DATABASE / INFRASTRUCTURE
+│   │   │
+│   │   ├── 📁 models/
+│   │   │   ├── 📄 game.go
+│   │   │   │   # DB representation Game
+│   │   │   │
+│   │   │   └── 📄 user.go
+│   │   │       # DB representation User
+│   │   │
+│   │   ├── 📁 mappers/
+│   │   │   ├── 📄 game_mapper.go
+│   │   │   │   # Domain ↔ DB
+│   │   │   │
+│   │   │   └── 📄 user_mapper.go
+│   │   │       # Domain ↔ DB
+│   │   │
+│   │   ├── 📁 repository/
+│   │   │   ├── 📄 game_repo.go
+│   │   │   │   # PostgreSQL implementation
+│   │   │   │
+│   │   │   └── 📄 user_repo.go
+│   │   │       # PostgreSQL implementation
+│   │   │
+│   │   └── 📄 postgres.go
+│   │       # pgxpool / подключение к PostgreSQL
+│   │
+│   │
+│   ├── 📁 web/                            # 🌐 HTTP API
+│   │   │
+│   │   ├── 📁 models/
+│   │   │   ├── 📄 game.go
+│   │   │   │   # Request / Response DTO
+│   │   │   │
+│   │   │   └── 📄 auth.go
+│   │   │       # SignUpRequest и auth DTO
+│   │   │
+│   │   ├── 📁 mappers/
+│   │   │   ├── 📄 game_mapper.go
+│   │   │   │   # Domain ↔ JSON
+│   │   │   │
+│   │   │   └── 📄 user_mapper.go
+│   │   │       # Domain ↔ JSON
+│   │   │
+│   │   ├── 📁 handlers/
+│   │   │   ├── 📄 game_handler.go
+│   │   │   │   # Game endpoints
+│   │   │   │
+│   │   │   ├── 📄 auth_handler.go
+│   │   │   │   # Registration / Authentication
+│   │   │   │
+│   │   │   └── 📄 user_handler.go
+│   │   │       # Get user by UUID
+│   │   │
+│   │   └── 📁 middleware/
+│   │       └── 📄 authenticator.go
+│   │           # UserAuthenticator
+│   │           # Basic Auth
+│   │           # UUID → context
+│   │
+│   │
+│   └── 📁 di/                             # 🔌 DEPENDENCY INJECTION
+│       └── 📄 container.go
+│           # uber/fx
+│           # связывает все зависимости
+│
+│
+├── 📁 migrations/                         # 🐘 DATABASE
+│   ├── 📄 001_create_users.sql
+│   ├── 📄 002_create_games.sql
+│   └── 📄 003_create_game_players.sql
+│
+├── 📄 go.mod
+└── 📄 go.sum
