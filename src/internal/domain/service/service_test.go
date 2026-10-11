@@ -5,14 +5,12 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-
-	"project03/internal/datasource/repository"
 	"project03/internal/domain/models"
 	"project03/internal/domain/strategy"
 )
 
 func setupService() GameService {
-	repo := repository.NewGameRepository()
+	repo := newMockGameRepository()
 
 	return NewService(
 		repo,

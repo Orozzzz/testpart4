@@ -1,21 +1,22 @@
 package mappers
 
 import (
-	dsmodels "project03/internal/datasource/models"
+	"github.com/google/uuid"
+
+	"project03/internal/datasource/dbmodels"
 	"project03/internal/domain/models"
 )
 
-func ToDomain(dto dsmodels.GameDTO) models.Game {
+func ToDomain(dto dbmodels.GameDTO) models.Game {
 	var board models.Board
 
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
+	for i := range board {
+		for j := range board[i] {
 			board[i][j] = models.Cell(dto.Board[i][j])
 		}
 	}
 
 	players := make([]models.Player, 0, len(dto.Players))
-
 	for _, player := range dto.Players {
 		players = append(players, models.Player{
 			ID:   player.ID,
@@ -23,42 +24,57 @@ func ToDomain(dto dsmodels.GameDTO) models.Game {
 		})
 	}
 
+	var winner uuid.UUID
+	if dto.Winner != nil {
+		winner = *dto.Winner
+	}
+
 	return models.Game{
-		ID:            dto.ID,
+		ID:            dto.ID.String(),
 		Board:         board,
 		Players:       players,
 		CurrentPlayer: dto.CurrentPlayer,
 		Status:        models.GameStatus(dto.Status),
-		Winner:        dto.Winner,
+		Winner:        winner,
 		Mode:          models.GameMode(dto.Mode),
 	}
 }
 
-func ToDTO(game models.Game) dsmodels.GameDTO {
+func ToDTO(game models.Game) dbmodels.GameDTO {
 	var board [3][3]int
 
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
+	for i := range game.Board {
+		for j := range game.Board[i] {
 			board[i][j] = int(game.Board[i][j])
 		}
 	}
 
-	players := make([]dsmodels.PlayerDTO, 0, len(game.Players))
-
+	players := make([]dbmodels.PlayerDTO, 0, len(game.Players))
 	for _, player := range game.Players {
-		players = append(players, dsmodels.PlayerDTO{
+		players = append(players, dbmodels.PlayerDTO{
 			ID:   player.ID,
 			Cell: int(player.Cell),
 		})
 	}
 
-	return dsmodels.GameDTO{
-		ID:            game.ID,
+	id, err := uuid.Parse(game.ID)
+	if err != nil {
+		id = uuid.Nil
+	}
+
+	dto := dbmodels.GameDTO{
+		ID:            id,
 		Board:         board,
 		Players:       players,
 		CurrentPlayer: game.CurrentPlayer,
 		Status:        int(game.Status),
-		Winner:        game.Winner,
 		Mode:          int(game.Mode),
 	}
+
+	if game.Winner != uuid.Nil {
+		winner := game.Winner
+		dto.Winner = &winner
+	}
+
+	return dto
 }
